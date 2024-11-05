@@ -459,15 +459,22 @@ void AddDIE(const dwarf::CU& cu, const GeneralDIE& die,
 
   // DWARF 5 range list is the same information as "ranges" but in a different
   // format.
-  if (die.rnglistx) {
-    uint64_t range_list = *die.rnglistx;
-    size_t offset_size = cu.unit_sizes().dwarf64() ? 8 : 4;
-    string_view offset_data =
-        StrictSubstr(cu.dwarf().debug_rnglists,
-                     cu.range_lists_base() + (range_list * offset_size));
-    uint64_t offset = cu.unit_sizes().ReadDWARFOffset(&offset_data);
-    string_view data = StrictSubstr(
-        cu.dwarf().debug_rnglists, cu.range_lists_base() + offset);
+  if (cu.unit_sizes().dwarf_version() >= 5 ) {
+    string_view data;
+    if (die.rnglistx) {
+       uint64_t range_list = *die.rnglistx;
+       size_t offset_size = cu.unit_sizes().dwarf64() ? 8 : 4;
+       string_view offset_data =
+          StrictSubstr(cu.dwarf().debug_rnglists,
+                cu.range_lists_base() + (range_list * offset_size));
+       uint64_t offset = cu.unit_sizes().ReadDWARFOffset(&offset_data);
+       data = StrictSubstr( cu.dwarf().debug_rnglists, cu.range_lists_base() + offset);
+    } else if ( die.ranges ) {
+       uint64_t offset = *die.ranges;
+       data = StrictSubstr( cu.dwarf().debug_rnglists, offset);
+    } else {
+       return;
+    }
     const char* start = data.data();
     bool done = false;
     uint64_t base_address = cu.addr_base();
@@ -504,11 +511,32 @@ void AddDIE(const dwarf::CU& cu, const GeneralDIE& die,
                                           cu.unit_name());
           break;
         }
-        case DW_RLE_base_address:
-        case DW_RLE_start_end:
-        case DW_RLE_start_length:
-          THROW("NYI");
+        case DW_RLE_base_address: {
+          base_address = cu.unit_sizes().address_size() == 4 ?
+            ReadFixed<uint32_t> ( &data ) : ReadFixed<uint64_t> ( &data );
           break;
+        }
+
+        case DW_RLE_start_end: {
+          uint64_t start= cu.unit_sizes().address_size() == 4 ?
+            ReadFixed<uint32_t> ( &data ) : ReadFixed<uint64_t> ( &data );
+          uint64_t end = cu.unit_sizes().address_size() == 4 ?
+            ReadFixed<uint32_t> ( &data ) : ReadFixed<uint64_t> ( &data );
+          sink->AddVMRangeIgnoreDuplicate("dwarf_rangelst", start, end - start,
+              cu.unit_name());
+          break;
+        }
+
+        case DW_RLE_start_length: {
+          uint64_t start= cu.unit_sizes().address_size() == 4 ?
+             ReadFixed<uint32_t> ( &data ) : ReadFixed<uint64_t> ( &data );
+          uint64_t len = dwarf::ReadLEB128<uint64_t> ( &data );
+          sink->AddVMRangeIgnoreDuplicate("dwarf_rangelst", start, len,
+              cu.unit_name());
+          break;
+        }
+        default:
+          THROW("NYI");
       }
     }
     string_view all(start, data.data() - start);
