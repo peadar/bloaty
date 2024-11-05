@@ -250,6 +250,8 @@ add_library(libbloaty STATIC
     src/range_map.cc
     src/range_map.h
     src/re.h
+    src/source_map.cc
+    src/source_map.h
     src/util.cc
     src/util.h
     src/webassembly.cc
@@ -307,6 +309,7 @@ endif()
 if(NOT absl_FOUND)
   set(BLOATY_BUILD_TESTING_SAVE "${BUILD_TESTING}")
   set(BUILD_TESTING OFF)
+  set(ABSL_MSVC_STATIC_RUNTIME ON)
   add_subdirectory(third_party/abseil-cpp)
   set(BUILD_TESTING "${BLOATY_BUILD_TESTING_SAVE}")
 endif()
